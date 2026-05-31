@@ -59,8 +59,6 @@ export default function Revenue() {
 
   function validate() {
     const e = {};
-    if (!form.clientName.trim()) e.clientName = 'Nom du client requis';
-    if (!form.carPlate.trim()) e.carPlate = 'Numéro de plaque requis';
     if (!form.washingType) e.washingType = 'Type de lavage requis';
     if (!form.price || isNaN(form.price) || Number(form.price) <= 0) e.price = 'Prix valide requis';
     if (!form.date) e.date = 'Date requise';
@@ -211,7 +209,7 @@ export default function Revenue() {
               </Select>
             </FormField>
           ) : (
-            <FormField label="Nom du client" required error={errors.clientName}>
+            <FormField label="Nom du client"  error={errors.clientName}>
               <Input placeholder="Ahmed Benali" value={form.clientName} onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))} />
             </FormField>
           )}
@@ -222,7 +220,7 @@ export default function Revenue() {
             </FormField>
           )}
 
-          <FormField label="Numéro de plaque" required error={errors.carPlate}>
+          <FormField label="Numéro de plaque"  error={errors.carPlate}>
             <Input placeholder="16 123 45" value={form.carPlate} onChange={e => setForm(f => ({ ...f, carPlate: e.target.value.toUpperCase() }))} />
           </FormField>
 
