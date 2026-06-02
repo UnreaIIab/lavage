@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Plus, Search, Trash2, Pencil, DollarSign, Car } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Plus, Search, Trash2, Pencil, DollarSign, Car, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate, getDateRange, filterByDateRange } from '../utils/dateFilters';
@@ -8,7 +8,7 @@ import Button from '../components/Button';
 import Badge from '../components/Badge';
 import EmptyState from '../components/EmptyState';
 import DateFilter from '../components/DateFilter';
-import { FormField, Input, Select, Textarea } from '../components/FormField';
+import { FormField, Input, Select, Textarea, ComboInput } from '../components/FormField';
 import StatCard from '../components/StatCard';
 
 const PAYMENT_METHODS = ['Espèces', 'Carte', 'Paiement mobile', 'Virement bancaire', 'Facture'];
@@ -40,6 +40,10 @@ export default function Revenue() {
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState(defaultForm);
   const [editErrors, setEditErrors] = useState({});
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { setPage(1); }, [search, filter, customStart, customEnd, pageSize]);
 
   const { start, end } = useMemo(() => getDateRange(filter, customStart, customEnd), [filter, customStart, customEnd]);
   const filtered = useMemo(() => {
@@ -57,8 +61,11 @@ export default function Revenue() {
 
   const totalRevenue = filtered.reduce((s, r) => s + (r.price || 0), 0);
   const avgRevenue = filtered.length > 0 ? totalRevenue / filtered.length : 0;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const corporateClients = useMemo(() => clients, [clients]);
+  const vehicleModels = useMemo(() => [...new Set(revenues.map(r => r.vehicleModel).filter(Boolean))], [revenues]);
 
   function validate(f = form) {
     const e = {};
@@ -162,7 +169,8 @@ export default function Revenue() {
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50">
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Client</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plaque / Modèle</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plaque</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Modèle</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Service</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Paiement</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
@@ -171,7 +179,7 @@ export default function Revenue() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map(rev => (
+                {paginated.map(rev => (
                   <tr key={rev.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-5 py-3.5">
                       <div>
@@ -180,8 +188,12 @@ export default function Revenue() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">{rev.carPlate}</span>
-                      {rev.vehicleModel && <p className="text-xs text-gray-400 mt-0.5">{rev.vehicleModel}</p>}
+                      {rev.carPlate
+                        ? <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">{rev.carPlate}</span>
+                        : <span className="text-gray-400">-</span>}
+                    </td>
+                    <td className="px-5 py-3.5 text-gray-600">
+                      {rev.vehicleModel || <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-5 py-3.5 text-gray-600">{rev.washingType}</td>
                     <td className="px-5 py-3.5">
@@ -204,12 +216,47 @@ export default function Revenue() {
               </tbody>
               <tfoot>
                 <tr className="border-t border-gray-200 bg-gray-50">
-                  <td colSpan={5} className="px-5 py-3 text-sm font-semibold text-gray-700">Total ({filtered.length} entrées)</td>
+                  <td colSpan={6} className="px-5 py-3 text-sm font-semibold text-gray-700">Total ({filtered.length} entrées)</td>
                   <td className="px-5 py-3 text-right text-sm font-bold text-green-600">{formatCurrency(totalRevenue)}</td>
                   <td />
                 </tr>
               </tfoot>
             </table>
+          </div>
+        )}
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <span>Lignes par page :</span>
+              <select
+                value={pageSize}
+                onChange={e => setPageSize(Number(e.target.value))}
+                className="border border-gray-200 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#D97757]/30 focus:border-[#D97757]"
+              >
+                {[10, 20, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-3 text-sm text-gray-500">
+              <span>
+                {Math.min((page - 1) * pageSize + 1, filtered.length)}–{Math.min(page * pageSize, filtered.length)} sur {filtered.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="p-1 rounded hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="p-1 rounded hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -247,7 +294,7 @@ export default function Revenue() {
           </FormField>
 
           <FormField label="Modèle du véhicule">
-            <Input placeholder="Toyota Land Cruiser, Renault Kangoo..." value={form.vehicleModel} onChange={e => setForm(f => ({ ...f, vehicleModel: e.target.value }))} />
+            <ComboInput id="add-vehicle-model" options={vehicleModels} placeholder="Toyota Land Cruiser, Renault Kangoo..." value={form.vehicleModel} onChange={e => setForm(f => ({ ...f, vehicleModel: e.target.value }))} />
           </FormField>
 
           <FormField label="Type de lavage" required error={errors.washingType}>
@@ -317,7 +364,7 @@ export default function Revenue() {
           </FormField>
 
           <FormField label="Modèle du véhicule">
-            <Input placeholder="Toyota Land Cruiser, Renault Kangoo..." value={editForm.vehicleModel} onChange={e => setEditForm(f => ({ ...f, vehicleModel: e.target.value }))} />
+            <ComboInput id="edit-vehicle-model" options={vehicleModels} placeholder="Toyota Land Cruiser, Renault Kangoo..." value={editForm.vehicleModel} onChange={e => setEditForm(f => ({ ...f, vehicleModel: e.target.value }))} />
           </FormField>
 
           <FormField label="Type de lavage" required error={editErrors.washingType}>

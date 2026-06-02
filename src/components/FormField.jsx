@@ -34,3 +34,14 @@ export function Select({ className = '', children, ...props }) {
 export function Textarea({ className = '', ...props }) {
   return <textarea className={`${inputClass} ${className} resize-none`} rows={3} {...props} />;
 }
+
+export function ComboInput({ id, options = [], className = '', ...props }) {
+  return (
+    <>
+      <input list={id} className={`${inputClass} ${className}`} {...props} />
+      <datalist id={id}>
+        {options.map(opt => <option key={opt} value={opt} />)}
+      </datalist>
+    </>
+  );
+}
