@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { seedRevenues, seedExpenses, seedClients } from '../utils/seedData';
 
 const AppContext = createContext(null);
 
@@ -69,8 +68,10 @@ function dbToInvoice(r) {
 function invoiceToDb(d, uid) {
   return { id: d.id, user_id: uid, invoice_number: d.invoiceNumber, client_id: d.clientId || null, client_name: d.clientName, client_email: d.clientEmail || '', client_phone: d.clientPhone || '', client_address: d.clientAddress || '', items: d.items || [], subtotal: d.subtotal || 0, tax: d.tax || 0, total: d.total || 0, status: d.status || 'unpaid', date: d.date, due_date: d.dueDate, notes: d.notes || '', created_at: d.createdAt };
 }
+const SETTINGS_ID = 'app-settings';
+
 function settingsToDb(s, wt, ec, uid) {
-  return { id: 'cfg-' + uid, user_id: uid, company_name: s.companyName, company_phone: s.companyPhone, company_email: s.companyEmail, company_address: s.companyAddress, tax_number: s.taxNumber, invoice_footer: s.invoiceFooter, statement_footer: s.statementFooter, logo: s.logo, wash_types: wt, expense_categories: ec, updated_at: new Date().toISOString() };
+  return { id: SETTINGS_ID, user_id: uid, company_name: s.companyName, company_phone: s.companyPhone, company_email: s.companyEmail, company_address: s.companyAddress, tax_number: s.taxNumber, invoice_footer: s.invoiceFooter, statement_footer: s.statementFooter, logo: s.logo, wash_types: wt, expense_categories: ec, updated_at: new Date().toISOString() };
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
@@ -99,39 +100,46 @@ export function AppProvider({ children }) {
       setDataLoading(true);
       try {
         const [
-          { data: revRows }, { data: expRows }, { data: cliRows },
-          { data: invRows }, { data: setRow },
+          { data: revRows, error: revErr },
+          { data: expRows, error: expErr },
+          { data: cliRows, error: cliErr },
+          { data: invRows, error: invErr },
+          { data: setRow,  error: setErr },
         ] = await Promise.all([
-          supabase.from('revenues').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-          supabase.from('expenses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-          supabase.from('clients').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-          supabase.from('invoices').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-          supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle(),
+          supabase.from('revenues').select('*').order('created_at', { ascending: false }),
+          supabase.from('expenses').select('*').order('created_at', { ascending: false }),
+          supabase.from('clients').select('*').order('created_at', { ascending: false }),
+          supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+          supabase.from('settings').select('*').eq('id', SETTINGS_ID).maybeSingle(),
         ]);
 
-        setRevenues((revRows || []).map(dbToRevenue));
-        setExpenses((expRows || []).map(dbToExpense));
-        setClients((cliRows || []).map(dbToClient));
-        setInvoices((invRows || []).map(dbToInvoice));
+        if (revErr) console.error('revenues fetch error:', revErr.message);
+        if (expErr) console.error('expenses fetch error:', expErr.message);
+        if (cliErr) console.error('clients fetch error:', cliErr.message);
+        if (invErr) console.error('invoices fetch error:', invErr.message);
+        if (setErr) console.error('settings fetch error:', setErr.message);
+
+        // Always set state from Supabase — these are the ground-truth values.
+        const fetchedRevenues = (revRows || []).map(dbToRevenue);
+        const fetchedExpenses = (expRows || []).map(dbToExpense);
+        const fetchedClients  = (cliRows || []).map(dbToClient);
+        const fetchedInvoices = (invRows || []).map(dbToInvoice);
+
+        setRevenues(fetchedRevenues);
+        setExpenses(fetchedExpenses);
+        setClients(fetchedClients);
+        setInvoices(fetchedInvoices);
 
         if (setRow) {
           setSettings({ ...DEFAULT_SETTINGS, companyName: setRow.company_name, companyPhone: setRow.company_phone, companyEmail: setRow.company_email, companyAddress: setRow.company_address, taxNumber: setRow.tax_number, invoiceFooter: setRow.invoice_footer, statementFooter: setRow.statement_footer, logo: setRow.logo });
           setWashTypes(setRow.wash_types || DEFAULT_WASH_TYPES);
           setExpenseCategories(setRow.expense_categories || DEFAULT_EXPENSE_CATEGORIES);
         } else {
-          // First login – seed demo data
-          const clis = seedClients.map(c => clientToDb(c, user.id));
-          const revs = seedRevenues.map(r => revenueToDb(r, user.id));
-          const exps = seedExpenses.map(e => expenseToDb(e, user.id));
-          await Promise.all([
-            supabase.from('clients').upsert(clis),
-            supabase.from('revenues').upsert(revs),
-            supabase.from('expenses').upsert(exps),
-            supabase.from('settings').upsert([settingsToDb(DEFAULT_SETTINGS, DEFAULT_WASH_TYPES, DEFAULT_EXPENSE_CATEGORIES, user.id)]),
-          ]);
-          setClients(seedClients);
-          setRevenues(seedRevenues);
-          setExpenses(seedExpenses);
+          // No settings row — create one with defaults and leave data as-is.
+          const { error: recreateErr } = await supabase
+            .from('settings')
+            .upsert([settingsToDb(DEFAULT_SETTINGS, DEFAULT_WASH_TYPES, DEFAULT_EXPENSE_CATEGORIES, user.id)]);
+          if (recreateErr) console.error('settings recreate error:', recreateErr.message);
         }
       } catch (err) {
         console.error('Error loading data:', err.message);
@@ -151,6 +159,15 @@ export function AppProvider({ children }) {
     setRevenues(prev => [record, ...prev]);
     return record;
   }, [user]);
+
+  const updateRevenue = useCallback(async (id, data) => {
+    const existing = revenues.find(r => r.id === id);
+    if (!existing) return;
+    const updated = { ...existing, ...data };
+    const { error } = await supabase.from('revenues').update(revenueToDb(updated, user.id)).eq('id', id);
+    if (error) throw error;
+    setRevenues(prev => prev.map(r => r.id === id ? updated : r));
+  }, [user, revenues]);
 
   const deleteRevenue = useCallback(async (id) => {
     const { error } = await supabase.from('revenues').delete().eq('id', id);
@@ -246,7 +263,7 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       revenues, expenses, clients, invoices,
       settings, washTypes, expenseCategories, dataLoading,
-      addRevenue, deleteRevenue,
+      addRevenue, updateRevenue, deleteRevenue,
       addExpense, deleteExpense,
       addClient, updateClient, deleteClient,
       addInvoice, updateInvoice, deleteInvoice,

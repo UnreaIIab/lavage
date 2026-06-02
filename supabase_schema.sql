@@ -1,14 +1,13 @@
 -- ============================================================
 -- LavagePro – Supabase Schema
 -- Run this in the Supabase SQL Editor to create all tables.
+-- All authenticated users share the same workspace data.
 -- ============================================================
-
--- Enable Row Level Security on all tables (users only see their own data)
 
 -- ── Clients ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS clients (
   id          TEXT PRIMARY KEY,
-  user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id     UUID REFERENCES auth.users(id) ON DELETE SET NULL,  -- created_by (audit)
   name        TEXT NOT NULL,
   phone       TEXT,
   email       TEXT,
@@ -16,12 +15,14 @@ CREATE TABLE IF NOT EXISTS clients (
   created_at  TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "clients_owner" ON clients USING (user_id = auth.uid());
+CREATE POLICY "clients_authenticated" ON clients
+  USING (auth.uid() IS NOT NULL)
+  WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ── Revenues ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS revenues (
   id              TEXT PRIMARY KEY,
-  user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id         UUID REFERENCES auth.users(id) ON DELETE SET NULL,  -- created_by (audit)
   client_type     TEXT,
   client_name     TEXT,
   client_id       TEXT,
@@ -35,12 +36,14 @@ CREATE TABLE IF NOT EXISTS revenues (
   created_at      TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE revenues ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "revenues_owner" ON revenues USING (user_id = auth.uid());
+CREATE POLICY "revenues_authenticated" ON revenues
+  USING (auth.uid() IS NOT NULL)
+  WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ── Expenses ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS expenses (
   id          TEXT PRIMARY KEY,
-  user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id     UUID REFERENCES auth.users(id) ON DELETE SET NULL,  -- created_by (audit)
   category    TEXT,
   amount      NUMERIC,
   date        DATE,
@@ -48,12 +51,14 @@ CREATE TABLE IF NOT EXISTS expenses (
   created_at  TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "expenses_owner" ON expenses USING (user_id = auth.uid());
+CREATE POLICY "expenses_authenticated" ON expenses
+  USING (auth.uid() IS NOT NULL)
+  WITH CHECK (auth.uid() IS NOT NULL);
 
 -- ── Invoices ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS invoices (
   id              TEXT PRIMARY KEY,
-  user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id         UUID REFERENCES auth.users(id) ON DELETE SET NULL,  -- created_by (audit)
   invoice_number  TEXT,
   client_id       TEXT,
   client_name     TEXT,
@@ -71,12 +76,14 @@ CREATE TABLE IF NOT EXISTS invoices (
   created_at      TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "invoices_owner" ON invoices USING (user_id = auth.uid());
+CREATE POLICY "invoices_authenticated" ON invoices
+  USING (auth.uid() IS NOT NULL)
+  WITH CHECK (auth.uid() IS NOT NULL);
 
--- ── Settings ───────────────────────────────────────────────
+-- ── Settings (one shared row for the whole workspace) ──────
 CREATE TABLE IF NOT EXISTS settings (
-  id                TEXT PRIMARY KEY DEFAULT 'default',
-  user_id           UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  id                TEXT PRIMARY KEY,             -- always 'app-settings'
+  user_id           UUID REFERENCES auth.users(id) ON DELETE SET NULL,  -- last updated by
   company_name      TEXT DEFAULT 'LavagePro',
   company_phone     TEXT DEFAULT '',
   company_email     TEXT DEFAULT '',
@@ -90,4 +97,6 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at        TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "settings_owner" ON settings USING (user_id = auth.uid());
+CREATE POLICY "settings_authenticated" ON settings
+  USING (auth.uid() IS NOT NULL)
+  WITH CHECK (auth.uid() IS NOT NULL);

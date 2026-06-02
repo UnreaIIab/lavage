@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Search, Trash2, DollarSign, Car, Filter } from 'lucide-react';
+import { Plus, Search, Trash2, Pencil, DollarSign, Car } from 'lucide-react';
 import { format } from 'date-fns';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate, getDateRange, filterByDateRange } from '../utils/dateFilters';
@@ -28,7 +28,7 @@ const defaultForm = {
 };
 
 export default function Revenue() {
-  const { revenues, clients, washTypes, addRevenue, deleteRevenue } = useApp();
+  const { revenues, clients, washTypes, addRevenue, updateRevenue, deleteRevenue } = useApp();
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [errors, setErrors] = useState({});
@@ -37,6 +37,9 @@ export default function Revenue() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState(defaultForm);
+  const [editErrors, setEditErrors] = useState({});
 
   const { start, end } = useMemo(() => getDateRange(filter, customStart, customEnd), [filter, customStart, customEnd]);
   const filtered = useMemo(() => {
@@ -57,22 +60,36 @@ export default function Revenue() {
 
   const corporateClients = useMemo(() => clients, [clients]);
 
-  function validate() {
+  function validate(f = form) {
     const e = {};
-    if (!form.washingType) e.washingType = 'Type de lavage requis';
-    if (!form.price || isNaN(form.price) || Number(form.price) <= 0) e.price = 'Prix valide requis';
-    if (!form.date) e.date = 'Date requise';
+    if (!f.washingType) e.washingType = 'Type de lavage requis';
+    if (!f.price || isNaN(f.price) || Number(f.price) <= 0) e.price = 'Prix valide requis';
+    if (!f.date) e.date = 'Date requise';
     return e;
   }
 
   function handleSubmit(e) {
     e.preventDefault();
-    const errs = validate();
+    const errs = validate(form);
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     addRevenue({ ...form, price: parseFloat(form.price) });
     setModalOpen(false);
     setForm(defaultForm);
     setErrors({});
+  }
+
+  function openEdit(rev) {
+    setEditId(rev.id);
+    setEditForm({ clientType: rev.clientType, clientName: rev.clientName, clientId: rev.clientId || '', carPlate: rev.carPlate || '', vehicleModel: rev.vehicleModel || '', washingType: rev.washingType, price: String(rev.price), paymentMethod: rev.paymentMethod, date: rev.date, notes: rev.notes || '' });
+    setEditErrors({});
+  }
+
+  function handleEditSubmit(e) {
+    e.preventDefault();
+    const errs = validate(editForm);
+    if (Object.keys(errs).length > 0) { setEditErrors(errs); return; }
+    updateRevenue(editId, { ...editForm, price: parseFloat(editForm.price) });
+    setEditId(null);
   }
 
   function handleCorporateSelect(id) {
@@ -173,9 +190,14 @@ export default function Revenue() {
                     <td className="px-5 py-3.5 text-gray-500">{formatDate(rev.date)}</td>
                     <td className="px-5 py-3.5 text-right font-semibold text-green-600">{formatCurrency(rev.price)}</td>
                     <td className="px-5 py-3.5">
-                      <Button variant="ghost" size="icon" onClick={() => setConfirmDelete(rev.id)} className="text-gray-400 hover:text-red-500">
-                        <Trash2 size={15} />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(rev)} className="text-gray-400 hover:text-[#D97757]">
+                          <Pencil size={15} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setConfirmDelete(rev.id)} className="text-gray-400 hover:text-red-500">
+                          <Trash2 size={15} />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -258,6 +280,76 @@ export default function Revenue() {
           <div className="sm:col-span-2 flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Annuler</Button>
             <Button type="submit">Enregistrer</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Revenue Modal */}
+      <Modal open={!!editId} onClose={() => setEditId(null)} title="Modifier la recette" size="lg">
+        <form onSubmit={handleEditSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField label="Type de client" required>
+            <Select value={editForm.clientType} onChange={e => setEditForm(f => ({ ...f, clientType: e.target.value, clientId: '', clientName: '' }))}>
+              {CLIENT_TYPES.map(t => <option key={t}>{t}</option>)}
+            </Select>
+          </FormField>
+
+          {editForm.clientType === 'Entreprise' && corporateClients.length > 0 ? (
+            <FormField label="Sélectionner un client entreprise">
+              <Select value={editForm.clientId} onChange={e => { const c = corporateClients.find(cl => cl.id === e.target.value); if (c) setEditForm(f => ({ ...f, clientId: c.id, clientName: c.name })); }}>
+                <option value="">— Sélectionner un client —</option>
+                {corporateClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </FormField>
+          ) : (
+            <FormField label="Nom du client" error={editErrors.clientName}>
+              <Input placeholder="Ahmed Benali" value={editForm.clientName} onChange={e => setEditForm(f => ({ ...f, clientName: e.target.value }))} />
+            </FormField>
+          )}
+
+          {editForm.clientType === 'Entreprise' && corporateClients.length > 0 && (
+            <FormField label="Nom du client" required error={editErrors.clientName}>
+              <Input placeholder="Nom du client" value={editForm.clientName} onChange={e => setEditForm(f => ({ ...f, clientName: e.target.value }))} />
+            </FormField>
+          )}
+
+          <FormField label="Numéro de plaque" error={editErrors.carPlate}>
+            <Input placeholder="16 123 45" value={editForm.carPlate} onChange={e => setEditForm(f => ({ ...f, carPlate: e.target.value.toUpperCase() }))} />
+          </FormField>
+
+          <FormField label="Modèle du véhicule">
+            <Input placeholder="Toyota Land Cruiser, Renault Kangoo..." value={editForm.vehicleModel} onChange={e => setEditForm(f => ({ ...f, vehicleModel: e.target.value }))} />
+          </FormField>
+
+          <FormField label="Type de lavage" required error={editErrors.washingType}>
+            <Select value={editForm.washingType} onChange={e => setEditForm(f => ({ ...f, washingType: e.target.value }))}>
+              <option value="">— Sélectionner —</option>
+              {washTypes.map(t => <option key={t}>{t}</option>)}
+            </Select>
+          </FormField>
+
+          <FormField label="Prix (DH)" required error={editErrors.price}>
+            <Input type="number" min="0" step="0.01" placeholder="1500" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: e.target.value }))} />
+          </FormField>
+
+          <FormField label="Mode de paiement">
+            <Select value={editForm.paymentMethod} onChange={e => setEditForm(f => ({ ...f, paymentMethod: e.target.value }))}>
+              {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+            </Select>
+          </FormField>
+
+          <FormField label="Date" required error={editErrors.date}>
+            <Input type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} />
+          </FormField>
+
+          <div className="sm:col-span-2">
+            <FormField label="Notes">
+              <Textarea placeholder="Notes optionnelles..." value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
+            </FormField>
+          </div>
+
+          <div className="sm:col-span-2 flex justify-end gap-3 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setEditId(null)}>Annuler</Button>
+            <Button type="submit">Enregistrer les modifications</Button>
           </div>
         </form>
       </Modal>
