@@ -184,6 +184,15 @@ export function AppProvider({ children }) {
     return record;
   }, [user]);
 
+  const updateExpense = useCallback(async (id, data) => {
+    const existing = expenses.find(e => e.id === id);
+    if (!existing) return;
+    const updated = { ...existing, ...data };
+    const { error } = await supabase.from('expenses').update(expenseToDb(updated, user.id)).eq('id', id);
+    if (error) throw error;
+    setExpenses(prev => prev.map(e => e.id === id ? updated : e));
+  }, [user, expenses]);
+
   const deleteExpense = useCallback(async (id) => {
     const { error } = await supabase.from('expenses').delete().eq('id', id);
     if (error) throw error;
@@ -264,7 +273,7 @@ export function AppProvider({ children }) {
       revenues, expenses, clients, invoices,
       settings, washTypes, expenseCategories, dataLoading,
       addRevenue, updateRevenue, deleteRevenue,
-      addExpense, deleteExpense,
+      addExpense, updateExpense, deleteExpense,
       addClient, updateClient, deleteClient,
       addInvoice, updateInvoice, deleteInvoice,
       getClientRevenues, getClientInvoices,

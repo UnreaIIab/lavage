@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, Receipt, TrendingDown } from 'lucide-react';
+import { Plus, Trash2, Pencil, Receipt, TrendingDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useApp } from '../context/AppContext';
@@ -20,7 +20,7 @@ const defaultForm = {
 };
 
 export default function Expenses() {
-  const { expenses, expenseCategories, addExpense, deleteExpense } = useApp();
+  const { expenses, expenseCategories, addExpense, updateExpense, deleteExpense } = useApp();
   const categoryColorMap = Object.fromEntries(expenseCategories.map(c => [c.name, c.color]));
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
@@ -29,6 +29,9 @@ export default function Expenses() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState(defaultForm);
+  const [editErrors, setEditErrors] = useState({});
 
   const { start, end } = useMemo(() => getDateRange(filter, customStart, customEnd), [filter, customStart, customEnd]);
   const filtered = useMemo(() =>
@@ -54,22 +57,36 @@ export default function Expenses() {
       .map(([name, value]) => ({ name, value }));
   }, [filtered]);
 
-  function validate() {
+  function validate(f = form) {
     const e = {};
-    if (!form.category) e.category = 'Catégorie requise';
-    if (!form.amount || isNaN(form.amount) || Number(form.amount) <= 0) e.amount = 'Montant valide requis';
-    if (!form.date) e.date = 'Date requise';
+    if (!f.category) e.category = 'Catégorie requise';
+    if (!f.amount || isNaN(f.amount) || Number(f.amount) <= 0) e.amount = 'Montant valide requis';
+    if (!f.date) e.date = 'Date requise';
     return e;
   }
 
   function handleSubmit(e) {
     e.preventDefault();
-    const errs = validate();
+    const errs = validate(form);
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     addExpense({ ...form, amount: parseFloat(form.amount) });
     setModalOpen(false);
     setForm(defaultForm);
     setErrors({});
+  }
+
+  function openEdit(exp) {
+    setEditId(exp.id);
+    setEditForm({ category: exp.category, amount: String(exp.amount), date: exp.date, notes: exp.notes || '' });
+    setEditErrors({});
+  }
+
+  function handleEditSubmit(e) {
+    e.preventDefault();
+    const errs = validate(editForm);
+    if (Object.keys(errs).length > 0) { setEditErrors(errs); return; }
+    updateExpense(editId, { ...editForm, amount: parseFloat(editForm.amount) });
+    setEditId(null);
   }
 
   const categoryBadgeColor = (cat) => {
@@ -163,9 +180,14 @@ export default function Expenses() {
                       <td className="px-5 py-3.5 text-gray-500 max-w-xs truncate">{exp.notes || '—'}</td>
                       <td className="px-5 py-3.5 text-right font-semibold text-red-500">{formatCurrency(exp.amount)}</td>
                       <td className="px-5 py-3.5">
-                        <Button variant="ghost" size="icon" onClick={() => setConfirmDelete(exp.id)} className="text-gray-400 hover:text-red-500">
-                          <Trash2 size={15} />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(exp)} className="text-gray-400 hover:text-[#D97757]">
+                            <Pencil size={15} />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => setConfirmDelete(exp.id)} className="text-gray-400 hover:text-red-500">
+                            <Trash2 size={15} />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -209,6 +231,35 @@ export default function Expenses() {
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Annuler</Button>
             <Button type="submit">Enregistrer</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal open={!!editId} onClose={() => setEditId(null)} title="Modifier la dépense">
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <FormField label="Catégorie" required error={editErrors.category}>
+            <Select value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}>
+              <option value="">— Sélectionner —</option>
+              {expenseCategories.map(c => <option key={c.name}>{c.name}</option>)}
+            </Select>
+          </FormField>
+
+          <FormField label="Montant (DH)" required error={editErrors.amount}>
+            <Input type="number" min="0" step="0.01" placeholder="5000" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} />
+          </FormField>
+
+          <FormField label="Date" required error={editErrors.date}>
+            <Input type="date" value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} />
+          </FormField>
+
+          <FormField label="Notes">
+            <Textarea placeholder="Notes optionnelles..." value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
+          </FormField>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setEditId(null)}>Annuler</Button>
+            <Button type="submit">Enregistrer les modifications</Button>
           </div>
         </form>
       </Modal>
